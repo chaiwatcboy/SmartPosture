@@ -44,7 +44,7 @@
       <video id="video" autoplay muted playsinline></video>
       <canvas id="canvas" width="640" height="480"></canvas>
       <p class="note">
-        ตั้งกล้องระดับไหล่ หันด้านข้างให้กล้อง และให้เห็นหู ไหล่ และสะโพก
+        ตั้งกล้องระดับไหล่ Hันด้านข้างให้กล้อง และให้เห็นหู ไหล่ และสะโพก
         จัดท่าที่สบายก่อนบันทึกท่าอ้างอิง
       </p>
       <button id="start">เปิดกล้อง</button>
@@ -160,7 +160,6 @@ $("start").onclick = async () => {
 function loop(now) {
   if (!stream) return;
   try {
-    // จำกัดประมาณ 10 ครั้ง/วินาทีเพื่อลดภาระเครื่อง
     if (video.readyState >= 2 &&
         video.currentTime !== lastFrame && now - lastScan >= 100) {
       lastFrame = video.currentTime;
@@ -181,7 +180,6 @@ function loop(now) {
 function evaluate(points) {
   current = null;
   $("reference").disabled = true;
-  // เลือกด้านที่จุดหู ไหล่ และสะโพกมีความมั่นใจสูงกว่า
   const sides = [[7, 11, 23], [8, 12, 24]];
   const score = ids => Math.min(...ids.map(i => points?.[i]?.visibility ?? 0));
   sides.sort((a, b) => score(b) - score(a));
@@ -216,7 +214,6 @@ function evaluate(points) {
 
   const tilt = (top, bottom) =>
     Math.atan2(Math.abs(top.x - bottom.x), bottom.y - top.y) * 180 / Math.PI;
-  // ค่าประมาณจากภาพ 2 มิติ ไม่ใช่มุมกระดูกสันหลัง
   samples.push({
     neck: tilt(ear, shoulder),
     trunk: tilt(shoulder, hip)
@@ -238,7 +235,6 @@ function evaluate(points) {
 
   const neck = Math.abs(current.neck - baseline.neck);
   const trunk = Math.abs(current.trunk - baseline.trunk);
-  // 12° เป็นเกณฑ์ทดลองใน UI ไม่ใช่มาตรฐานทางการแพทย์
   const changed = neck > 12 || trunk > 12;
   $("metrics").textContent =
     `ต่างจากท่าอ้างอิง: แนวหู–ไหล่ ${neck.toFixed(0)}° | แนวไหล่–สะโพก ${trunk.toFixed(0)}°`;
