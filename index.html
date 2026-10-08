@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ระบบวิเคราะห์ชีวกลศาสตร์การยศาสตร์และท่าทางอัจฉริยะ (AI Ergonomic Checker)</title>
+<title>ระบบวิเคราะห์ชีวกลศาสตร์การยศาสตร์ (Ergonomics & Posture AI)</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
   :root {
@@ -69,6 +69,8 @@
   button:disabled { opacity: .45; cursor: not-allowed }
   button.danger { background: #fee2e2; color: #991b1b }
   button.danger:hover:not(:disabled) { background: #fecaca }
+  button.action-btn { background: #0284c7 }
+  button.action-btn:hover:not(:disabled) { background: #0369a1 }
 
   #status {
     margin-top: 10px; padding: 9px 12px;
@@ -119,14 +121,14 @@
   }
   #notesBox:focus { border-color: var(--teal-600) }
 
-  #calibOverlay {
+  #overlayMessage {
     display: none; position: absolute; inset: 0;
     background: rgba(12, 26, 24, 0.88); z-index: 10; border-radius: 12px;
     align-items: center; justify-content: center; flex-direction: column;
     color: #fff; gap: 8px; text-align: center; padding: 20px;
   }
-  #calibOverlay.show { display: flex }
-  #calibCountdown { font-size: 68px; font-weight: 900; line-height: 1 }
+  #overlayMessage.show { display: flex }
+  #overlayCountdown { font-size: 68px; font-weight: 900; line-height: 1 }
 
   #alertPill {
     position: fixed; bottom: 20px; right: 20px;
@@ -148,7 +150,7 @@
 <main>
   <header>
     <h1>ระบบวิเคราะห์ชีวกลศาสตร์การยศาสตร์และท่าทางอัจฉริยะ</h1>
-    <p>สแกนระนาบข้างลำตัว (Sagittal Plane) • จำแนกเกณฑ์สากล RULA & ISO 11226 • วิเคราะห์ความเสี่ยงหมอนรองกระดูก</p>
+    <p>สแกนระนาบข้างลำตัว (Sagittal Plane) • จำแนกเกณฑ์สากล RULA & ISO 11226 • ตรวจสอบภาพถ่าย</p>
   </header>
 
   <div class="grid">
@@ -186,22 +188,26 @@
           </div>
         </div>
 
-        <div id="calibOverlay">
-          <p style="font-size:16px;font-weight:700">จัดระเบียบสรีระในท่า Neutral Posture</p>
-          <div id="calibCountdown">3</div>
-          <p style="font-size:12.5px;opacity:.85">ระบบกำลังบันทึกค่าอ้างอิงทางกายวิภาคเฉพาะบุคคล</p>
+        <div id="overlayMessage">
+          <p id="overlayTitle" style="font-size:16px;font-weight:700">จัดระเบียบสรีระ Neutral Posture (ISO 11226)</p>
+          <div id="overlayCountdown">3</div>
+          <p id="overlaySub" style="font-size:12.5px;opacity:.85">กรุณานั่งหลังตรง มองตรงระนาบสายตา</p>
         </div>
       </div>
 
       <div class="btn-row">
         <button id="start">📷 เปิดกล้อง</button>
+        <button id="snapPhotoBtn" class="action-btn" disabled>📸 ถ่ายภาพวิเคราะห์</button>
+        <button id="uploadPhotoBtn" class="secondary">📁 อัปโหลดภาพถ่าย</button>
+        <input type="file" id="fileInput" accept="image/*" style="display:none">
+        
+        <button id="calibBtn" class="secondary" disabled>🎯 Calibrate มาตรฐาน ISO</button>
+        <button id="resumeBtn" class="secondary" style="display:none">▶ สแกนกล้องสดต่อ</button>
         <button id="switchCamera" class="secondary" disabled>🔄 สลับกล้อง</button>
-        <button id="calibBtn" class="secondary" disabled>🎯 Calibrate ท่ามาตรฐาน</button>
-        <button id="capture" disabled>📸 วิเคราะห์ภาพนิ่ง (Capture)</button>
         <button id="stop" class="danger" disabled>⏹ ปิดกล้อง</button>
       </div>
 
-      <div id="status" role="status" aria-live="polite">พร้อมทำงาน — กรุณาเปิดกล้องและจัดตำแหน่งระนาบข้าง</div>
+      <div id="status" role="status" aria-live="polite">พร้อมทำงาน — กรุณาเปิดกล้อง หรือเลือกอัปโหลดภาพถ่ายด้านข้าง</div>
 
       <div style="margin-top:14px">
         <div class="prog-wrap">
@@ -240,7 +246,7 @@
         <h2>🔍 ผลการวินิจฉัยชีวกลศาสตร์ล่าสุด</h2>
         <div id="analysisResult">
           <div class="finding" style="color:var(--muted)">
-            กรุณาจัดแนวกล้องให้อยู่ด้านข้างลำตัว (Sagittal Plane) ให้มองเห็น หู หัวไหล่ และสะโพก แล้วกดปุ่ม "วิเคราะห์ภาพนิ่ง"
+            กรุณานั่งหันข้างลำตัว (Sagittal Plane) ให้เห็น หู ไหล่ สะโพก แล้วกดปุ่ม "ถ่ายภาพวิเคราะห์" หรือ "อัปโหลดภาพถ่าย"
           </div>
         </div>
       </aside>
@@ -250,7 +256,7 @@
         <ul id="stretchList">
           <li style="border-color:#94a3b8">
             <strong>รอผลการสแกนสรีระ</strong>
-            ระบบจะวิเคราะห์ความตึงตัวของกล้ามเนื้อ และสร้างตารางออกกำลังกายเพื่อยับยั้งอาการกล้ามเนื้อหดสั้น
+            ระบบจะวิเคราะห์ความตึงตัวของกล้ามเนื้อ และสร้างคำแนะนำปรับ Workstation และท่ายืดเหยียด
           </li>
         </ul>
       </aside>
@@ -261,9 +267,9 @@
           <p style="font-size:12.5px;color:var(--muted)">ยังไม่มีประวัติการบันทึก</p>
         </div>
         <div style="margin-top:10px; font-size:12.5px; color:var(--muted); display:flex; align-items:center; justify-content:space-between">
-          <span>🔔 สังเคราะห์เสียงเตือนทางชีวกลศาสตร์:</span>
+          <span>🔔 สังเคราะห์เสียงเตือน:</span>
           <select id="audioAlertSelect" style="border:1.5px solid #ccfbf1;border-radius:6px;padding:3px 6px;font:inherit;font-size:12px;background:#f8fafc">
-            <option value="on" selected>เปิดเสียงเตือน Real-time</option>
+            <option value="on" selected>เปิดเสียงเตือน</option>
             <option value="off">ปิดเสียงเตือน</option>
           </select>
         </div>
@@ -271,7 +277,7 @@
 
       <aside class="card">
         <h2>📝 บันทึกข้อมูลและส่งออกรายงาน</h2>
-        <textarea id="notesBox" placeholder="ระบุบันทึกทางคลินิก เช่น ปวดสะบักร้าวขึ้นศีรษะ, ระดับความสูงโต๊ะทำงาน..."></textarea>
+        <textarea id="notesBox" placeholder="ระบุบันทึกทางคลินิก เช่น ปวดสะบักร้าวขึ้นศีรษะ, นั่งพิมพ์งานเกิน 4 ชม..."></textarea>
         <div class="btn-row" style="margin-top:10px">
           <button id="exportBtn" class="secondary" style="font-size:12px">⬇ ส่งออกรายงานคลินิก HTML</button>
           <button id="clearHistBtn" class="danger" style="font-size:12px">🗑 ล้างข้อมูล</button>
@@ -293,6 +299,8 @@ const neckPct = $("neckPct"), cvaPct = $("cvaPct"), trunkPct = $("trunkPct"), sc
 const neckDot = $("neckDot"), cvaDot = $("cvaDot"), trunkDot = $("trunkDot"), viewDot = $("viewDot");
 const neckVal = $("neckVal"), cvaVal = $("cvaVal"), trunkVal = $("trunkVal"), viewVal = $("viewVal");
 const scoreArc = $("scoreArc"), scoreText = $("scoreText"), alertPill = $("alertPill");
+const overlay = $("overlayMessage"), overlayTitle = $("overlayTitle"), overlayCountdown = $("overlayCountdown"), overlaySub = $("overlaySub");
+const fileInput = $("fileInput");
 
 let model = null, stream = null, raf = null;
 let lastFrameTime = -1, lastScanTime = 0, isLoading = false, isFrozen = false;
@@ -358,17 +366,14 @@ function computeErgonomicScore(neck, trunk, cva) {
 function analyzeViewOrientation(points) {
   if (!points[11] || !points[12]) return { isSagittal: false, side: "none" };
   const shoulderDistX = Math.abs(points[11].x - points[12].x);
-  
-  if (shoulderDistX > 0.17) {
-    return { isSagittal: false, side: "frontal" };
-  }
+  if (shoulderDistX > 0.17) return { isSagittal: false, side: "frontal" };
   
   const leftVis = (points[7]?.visibility || 0) + (points[11]?.visibility || 0) + (points[23]?.visibility || 0);
   const rightVis = (points[8]?.visibility || 0) + (points[12]?.visibility || 0) + (points[24]?.visibility || 0);
   return { isSagittal: true, side: leftVis >= rightVis ? "left" : "right" };
 }
 
-function extractBiomechanicalData(points) {
+function extractBiomechanicalData(points, applySmooth = true) {
   if (!points) return null;
   const view = analyzeViewOrientation(points);
 
@@ -397,24 +402,31 @@ function extractBiomechanicalData(points) {
     rawCva = Math.min(90, rawCva + baselineOffset.neck);
   }
 
-  if (smoothAngles.neck === null) {
-    smoothAngles.neck = rawNeck;
-    smoothAngles.trunk = rawTrunk;
-    smoothAngles.cva = rawCva;
-  } else {
-    smoothAngles.neck = EMA_ALPHA * rawNeck + (1 - EMA_ALPHA) * smoothAngles.neck;
-    smoothAngles.trunk = EMA_ALPHA * rawTrunk + (1 - EMA_ALPHA) * smoothAngles.trunk;
-    smoothAngles.cva = EMA_ALPHA * rawCva + (1 - EMA_ALPHA) * smoothAngles.cva;
+  let finalNeck = rawNeck, finalTrunk = rawTrunk, finalCva = rawCva;
+
+  if (applySmooth) {
+    if (smoothAngles.neck === null) {
+      smoothAngles.neck = rawNeck;
+      smoothAngles.trunk = rawTrunk;
+      smoothAngles.cva = rawCva;
+    } else {
+      smoothAngles.neck = EMA_ALPHA * rawNeck + (1 - EMA_ALPHA) * smoothAngles.neck;
+      smoothAngles.trunk = EMA_ALPHA * rawTrunk + (1 - EMA_ALPHA) * smoothAngles.trunk;
+      smoothAngles.cva = EMA_ALPHA * rawCva + (1 - EMA_ALPHA) * smoothAngles.cva;
+    }
+    finalNeck = smoothAngles.neck;
+    finalTrunk = smoothAngles.trunk;
+    finalCva = smoothAngles.cva;
   }
 
-  const score = computeErgonomicScore(smoothAngles.neck, smoothAngles.trunk, smoothAngles.cva);
+  const score = computeErgonomicScore(finalNeck, finalTrunk, finalCva);
 
   return {
     isSagittal: true,
     pts,
-    neck: smoothAngles.neck,
-    trunk: smoothAngles.trunk,
-    cva: smoothAngles.cva,
+    neck: finalNeck,
+    trunk: finalTrunk,
+    cva: finalCva,
     score
   };
 }
@@ -485,6 +497,26 @@ function drawBiomechanicsSkeleton(pts, neck, trunk) {
   });
 }
 
+async function ensureModelLoaded() {
+  if (!model) {
+    setStatus("กำลังโหลด AI PoseLandmarker…");
+    const files = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
+    model = await PoseLandmarker.createFromOptions(files, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numPoses: 1,
+      minPoseDetectionConfidence: 0.5,
+      minPosePresenceConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+  }
+}
+
 function renderLoop(now) {
   if (!stream) return;
   try {
@@ -498,18 +530,18 @@ function renderLoop(now) {
       latestLandmarks = result.landmarks[0] || null;
 
       if (latestLandmarks) {
-        const bioData = extractBiomechanicalData(latestLandmarks);
+        const bioData = extractBiomechanicalData(latestLandmarks, true);
         if (bioData && bioData.isSagittal) {
           drawBiomechanicsSkeleton(bioData.pts, bioData.neck, bioData.trunk);
           syncDashboard(bioData.neck, bioData.trunk, bioData.cva, bioData.score);
-          $("capture").disabled = false;
-          setStatus("✅ แนวกระดูกสันหลังอยู่ในขอบเขตตรวจวัด — สามารถกดวิเคราะห์ภาพนิ่งได้");
+          $("snapPhotoBtn").disabled = false;
+          setStatus("✅ แนวกระดูกสันหลังอยู่ในขอบเขตตรวจวัด — กดปุ่ม 'ถ่ายภาพวิเคราะห์' ได้");
         } else {
-          $("capture").disabled = true;
-          setStatus("⚠️ จัดตำแหน่งให้อยู่ในระนาบข้าง (Sagittal View) ให้เห็น หู ไหล่ และสะโพก", "warn");
+          $("snapPhotoBtn").disabled = true;
+          setStatus("⚠️ นั่งหันข้างลำตัว (Sagittal Plane) ให้เห็น หู ไหล่ สะโพก", "warn");
         }
       } else {
-        $("capture").disabled = true;
+        $("snapPhotoBtn").disabled = true;
         setStatus("⚠️ ไม่พบจุดกายวิภาคในเฟรมภาพ", "warn");
       }
     }
@@ -524,31 +556,16 @@ async function startCamera() {
   isLoading = true; isFrozen = false;
   $("start").disabled = true;
   $("switchCamera").disabled = true;
-  $("capture").disabled = true;
+  $("snapPhotoBtn").disabled = true;
   $("calibBtn").disabled = true;
-  setStatus("กำลังโหลดโครงข่ายประสาทเทียม PoseLandmarker…");
+  $("resumeBtn").style.display = "none";
 
   try {
     if (!navigator.mediaDevices?.getUserMedia) {
-      throw new Error("จำเป็นต้องใช้งานผ่าน HTTPS หรือเครือข่าย localhost");
+      throw new Error("จำเป็นต้องใช้งานผ่าน HTTPS หรือ localhost");
     }
 
-    if (!model) {
-      const files = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-      );
-      model = await PoseLandmarker.createFromOptions(files, {
-        baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-          delegate: "GPU"
-        },
-        runningMode: "VIDEO",
-        numPoses: 1,
-        minPoseDetectionConfidence: 0.5,
-        minPosePresenceConfidence: 0.5,
-        minTrackingConfidence: 0.5
-      });
-    }
+    await ensureModelLoaded();
 
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
@@ -565,7 +582,7 @@ async function startCamera() {
     $("switchCamera").disabled = false;
     $("calibBtn").disabled = false;
     raf = requestAnimationFrame(renderLoop);
-    setStatus("✅ กล้องพร้อมทำงาน — จัดตำแหน่งนั่งหันข้างเข้าหากล้อง");
+    setStatus("✅ กล้องพร้อมทำงาน — จัดตำแหน่งนั่งหันข้างระนาบสายตา");
   } catch (err) {
     stopCamera();
     setStatus("เกิดข้อผิดพลาดในการเริ่มระบบ: " + err.message, "error");
@@ -586,8 +603,9 @@ function stopCamera() {
   $("start").disabled = isLoading;
   $("stop").disabled = true;
   $("switchCamera").disabled = true;
-  $("capture").disabled = true;
+  $("snapPhotoBtn").disabled = true;
   $("calibBtn").disabled = true;
+  $("resumeBtn").style.display = "none";
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   setStatus("ปิดกล้องเรียบร้อย");
 }
@@ -600,16 +618,18 @@ $("switchCamera").onclick = async () => {
   await startCamera();
 };
 
+/* ─── Calibrate ตามมาตรฐาน ISO 11226 (Standard Neutral Posture Verification) ─── */
 $("calibBtn").onclick = () => {
-  const overlay = $("calibOverlay");
+  overlayTitle.textContent = "ตรวจสอบ Neutral Posture (ISO 11226)";
+  overlaySub.textContent = "ยืดหลังตรง มองตรงระนาบสายตา (หูตรงกับหัวไหล่)";
   overlay.classList.add("show");
   let count = 3;
-  $("calibCountdown").textContent = count;
+  overlayCountdown.textContent = count;
 
   const timer = setInterval(() => {
     count--;
     if (count > 0) {
-      $("calibCountdown").textContent = count;
+      overlayCountdown.textContent = count;
       return;
     }
     clearInterval(timer);
@@ -623,13 +643,23 @@ $("calibBtn").onclick = () => {
           x: latestLandmarks[i].x * canvas.width,
           y: latestLandmarks[i].y * canvas.height
         }));
-        baselineOffset = {
-          neck: calculateTilt(pts[0], pts[1]),
-          trunk: calculateTilt(pts[1], pts[2])
-        };
-        smoothAngles = { neck: 0, trunk: 0, cva: 90 };
-        playBeep(880, 0.15);
-        setStatus("🎯 Calibrate สำเร็จ — บันทึกตำแหน่ง Neutral เป็น Baseline อ้างอิงแล้ว");
+
+        const testNeck = calculateTilt(pts[0], pts[1]);
+        const testTrunk = calculateTilt(pts[1], pts[2]);
+        const testCva = Math.max(0, 90 - testNeck);
+
+        // ตรวจสอบความถูกต้องตามเกณฑ์ Neutral Posture ของ ISO 11226 และ RULA Level 1
+        if (testNeck > 12 || testTrunk > 10 || testCva < 48) {
+          playBeep(250, 0.4);
+          setStatus(`❌ Calibrate ไม่ผ่านเกณฑ์ ISO 11226: ตรวจพบคอก้ม ${testNeck.toFixed(0)}° หรือหลังค่อม ${testTrunk.toFixed(0)}° (ไม่อนุญาตให้จดจำท่าที่ผิดรูปเป็นเกณฑ์ปกติ)`, "error");
+          alert("คำเตือนมาตรฐานการยศาสตร์:\nระบบไม่อนุญาตให้ Calibrate ในขณะที่คอก้มหรือหลังค่อม เนื่องจากจะทำให้ระบบจดจำสรีระที่ผิดรูปเป็นศูนย์\n\nกรุณายืดหลังตรงและมองตรงไปข้างหน้าแล้ว Calibrate ใหม่อีกครั้ง");
+        } else {
+          // ผ่านเกณฑ์มาตรฐาน: อนุญาตให้บันทึก Baseline เล็กน้อยเพื่อชดเชยมุมเอียงของเลนส์กล้อง
+          baselineOffset = { neck: testNeck, trunk: testTrunk };
+          smoothAngles = { neck: 0, trunk: 0, cva: 90 };
+          playBeep(880, 0.2);
+          setStatus("🎯 Calibrate สำเร็จตามมาตรฐาน ISO 11226: สรีระอยู่ในเกณฑ์ Neutral สมบูรณ์");
+        }
       } else {
         setStatus("Calibrate ไม่สำเร็จ: กรุณาหันข้างให้เห็นจุดสังเกตชัดเจน", "warn");
       }
@@ -637,42 +667,125 @@ $("calibBtn").onclick = () => {
   }, 1000);
 };
 
-$("capture").onclick = () => {
+/* ─── ปุ่มถ่ายภาพเพื่อนำมาวิเคราะห์ข้อมูล (Snapshot & Detailed Analysis) ─── */
+$("snapPhotoBtn").onclick = () => {
   if (!latestLandmarks || !stream) return;
 
-  isFrozen = true;
-  $("capture").disabled = true;
+  overlayTitle.textContent = "กำลังถ่ายภาพวิเคราะห์…";
+  overlaySub.textContent = "รักษานิ่งไว้สักครู่";
+  overlay.classList.add("show");
+  let count = 2;
+  overlayCountdown.textContent = count;
 
-  const bioData = extractBiomechanicalData(latestLandmarks);
-  if (!bioData || !bioData.isSagittal) {
-    isFrozen = false;
-    $("capture").disabled = false;
-    return;
-  }
+  const timer = setInterval(() => {
+    count--;
+    if (count > 0) {
+      overlayCountdown.textContent = count;
+      return;
+    }
+    clearInterval(timer);
+    overlay.classList.remove("show");
 
-  const { pts, neck, trunk, cva, score } = bioData;
+    // ทำการ Freeze และสกัดข้อมูลจากภาพนิ่งทันที
+    isFrozen = true;
+    $("snapPhotoBtn").disabled = true;
+    $("resumeBtn").style.display = "inline-flex";
 
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  drawBiomechanicsSkeleton(pts, neck, trunk);
+    const bioData = extractBiomechanicalData(latestLandmarks, false);
+    if (!bioData || !bioData.isSagittal) {
+      isFrozen = false;
+      $("snapPhotoBtn").disabled = false;
+      return;
+    }
 
-  const snapshot = canvas.toDataURL("image/jpeg", 0.85);
+    const { pts, neck, trunk, cva, score } = bioData;
 
-  sessionHistory.unshift({ score, neck, trunk, cva, ts: Date.now(), snapshot });
-  if (sessionHistory.length > 10) sessionHistory.pop();
+    // วาดภาพจากวิดีโอลงบน Canvas พร้อมวาด Skeleton ชีวกลศาสตร์
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    drawBiomechanicsSkeleton(pts, neck, trunk);
 
-  renderHistory();
-  renderClinicalFindings(neck, trunk, cva, score);
-  syncDashboard(neck, trunk, cva, score);
-  playBeep(660, 0.12);
+    const snapshot = canvas.toDataURL("image/jpeg", 0.9);
 
-  setStatus(`📊 วิเคราะห์ผลสำเร็จ: คะแนน ${score}/100 (มุมก้มคอ ${neck.toFixed(1)}°, CVA ${cva.toFixed(1)}°, ลำตัว ${trunk.toFixed(1)}°)`);
+    sessionHistory.unshift({ score, neck, trunk, cva, ts: Date.now(), snapshot });
+    if (sessionHistory.length > 10) sessionHistory.pop();
 
-  setTimeout(() => {
-    isFrozen = false;
-    if (stream) $("capture").disabled = false;
-  }, 1600);
+    renderHistory();
+    renderClinicalFindings(neck, trunk, cva, score);
+    syncDashboard(neck, trunk, cva, score);
+    playBeep(660, 0.15);
+
+    setStatus(`📸 ถ่ายภาพและวิเคราะห์สำเร็จ! คะแนนชีวกลศาสตร์: ${score}/100 (ก้มคอ ${neck.toFixed(1)}°, CVA ${cva.toFixed(1)}°)`);
+  }, 1000);
 };
 
+$("resumeBtn").onclick = () => {
+  isFrozen = false;
+  $("resumeBtn").style.display = "none";
+  if (stream) $("snapPhotoBtn").disabled = false;
+  setStatus("สลับกลับสู่โหมดตรวจวัดสดแบบ Real-time");
+};
+
+/* ─── ปุ่มอัปโหลดรูปภาพเพื่อนำมาวิเคราะห์ข้อมูล (File Upload Analysis) ─── */
+$("uploadPhotoBtn").onclick = () => fileInput.click();
+
+fileInput.onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  await ensureModelLoaded();
+
+  const img = new Image();
+  const reader = new FileReader();
+
+  reader.onload = ev => {
+    img.onload = () => {
+      // หยุดกล้องถ้าเปิดอยู่
+      if (stream) {
+        cancelAnimationFrame(raf);
+        isFrozen = true;
+      }
+      $("resumeBtn").style.display = stream ? "inline-flex" : "none";
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      // รันการตรวจจับบน Canvas
+      const result = model.detectForVideo(canvas, performance.now());
+      const points = result.landmarks[0] || null;
+
+      if (!points) {
+        setStatus("❌ ไม่พบบุคคลในรูปภาพ กรุณาใช้ภาพถ่ายเต็มตัวส่วนบนที่คมชัด", "error");
+        return;
+      }
+
+      const bioData = extractBiomechanicalData(points, false);
+      if (!bioData || !bioData.isSagittal) {
+        setStatus("❌ รูปภาพต้องเป็นมุมมองระนาบข้าง (Sagittal Plane) เท่านั้น", "warn");
+        return;
+      }
+
+      const { pts, neck, trunk, cva, score } = bioData;
+      drawBiomechanicsSkeleton(pts, neck, trunk);
+
+      const snapshot = canvas.toDataURL("image/jpeg", 0.9);
+      sessionHistory.unshift({ score, neck, trunk, cva, ts: Date.now(), snapshot });
+      if (sessionHistory.length > 10) sessionHistory.pop();
+
+      renderHistory();
+      renderClinicalFindings(neck, trunk, cva, score);
+      syncDashboard(neck, trunk, cva, score);
+      playBeep(660, 0.15);
+
+      setStatus(`📁 วิเคราะห์ภาพถ่ายสำเร็จ! คะแนน: ${score}/100 (ก้มคอ ${neck.toFixed(1)}°, CVA ${cva.toFixed(1)}°, ลำตัว ${trunk.toFixed(1)}°)`);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  fileInput.value = "";
+};
+
+/* ─── รายงานผลและการยศาสตร์ ─── */
 function renderClinicalFindings(neck, trunk, cva, score) {
   const findings = [];
 
@@ -680,7 +793,7 @@ function renderClinicalFindings(neck, trunk, cva, score) {
     findings.push({
       cls: "good", icon: "✅",
       title: "แนวกระดูกคอปกติ (Neutral Cervical Alignment)",
-      desc: `ค่า CVA อยู่ที่ ${cva.toFixed(1)}° และมุมก้มคอ ${neck.toFixed(1)}° อยู่ในเกณฑ์มาตรฐาน RULA ระดับ 1 ไม่เพิ่มแรงเค้นสถิตต่อข้อต่อกระดูกสันหลัง`
+      desc: `ค่า CVA อยู่ที่ ${cva.toFixed(1)}° และมุมก้มคอ ${neck.toFixed(1)}° สอดคล้องตามเกณฑ์ RULA ระดับ 1 ไม่เพิ่มแรงเค้นสถิตต่อข้อต่อกระดูกสันหลัง`
     });
   } else if (cva >= ERGO_LIMITS.CVA_SEVERE) {
     findings.push({
@@ -692,7 +805,7 @@ function renderClinicalFindings(neck, trunk, cva, score) {
     findings.push({
       cls: "bad", icon: "🔴",
       title: "ความเสี่ยงสูง: ภาวะ Forward Head Posture (RULA Action Level 3-4)",
-      desc: `ค่า CVA วิกฤตที่ ${cva.toFixed(1)}° (&lt; 48°) น้ำหนักกดทับกระดูกคอ C-Spine เทียบเท่า 18-22 กก. เสี่ยงต่อหมอนรองกระดูกคอเสื่อมและปวดศีรษะ Cervicogenic`
+      desc: `ค่า CVA วิกฤตที่ ${cva.toFixed(1)}° (< 48°) น้ำหนักกดทับกระดูกคอ C-Spine เทียบเท่า 18-22 กก. เสี่ยงต่อหมอนรองกระดูกคอเสื่อมและปวดศีรษะ Cervicogenic`
     });
   }
 
@@ -796,11 +909,14 @@ function renderHistory() {
       const img = new Image();
       img.onload = () => {
         isFrozen = true;
+        $("resumeBtn").style.display = stream ? "inline-flex" : "none";
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
         renderClinicalFindings(entry.neck, entry.trunk, entry.cva, entry.score);
         syncDashboard(entry.neck, entry.trunk, entry.cva, entry.score);
-        setStatus(`🔍 กำลังเรียกดูภาพนิ่งย้อนหลัง (คะแนนรวม: ${entry.score}) — กด "เปิดกล้อง" เพื่อตรวจวัดสดต่อ`);
+        setStatus(`🔍 กำลังเรียกดูภาพนิ่งย้อนหลัง (คะแนนรวม: ${entry.score}) — กด "สแกนกล้องสดต่อ" เพื่อทำงานต่อ`);
       };
       img.src = entry.snapshot;
     };
