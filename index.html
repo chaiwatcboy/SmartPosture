@@ -44,10 +44,11 @@
       <video id="video" autoplay muted playsinline></video>
       <canvas id="canvas" width="640" height="480"></canvas>
       <p class="note">
-        ตั้งกล้องระดับไหล่ Hันด้านข้างให้กล้อง และให้เห็นหู ไหล่ และสะโพก
+        ตั้งกล้องระดับไหล่ หันด้านข้างให้กล้อง และให้เห็นหู ไหล่ และสะโพก
         จัดท่าที่สบายก่อนบันทึกท่าอ้างอิง
       </p>
       <button id="start">เปิดกล้อง</button>
+      <button id="switchCamera" class="secondary" disabled>สลับกล้อง</button>
       <button id="reference" disabled>บันทึกท่าอ้างอิง</button>
       <button id="stop" class="secondary" disabled>ปิดกล้อง</button>
       <p id="status" role="status" aria-live="polite">ยังไม่ได้เปิดกล้อง</p>
@@ -87,6 +88,7 @@ const ctx = canvas.getContext("2d");
 let model, stream, raf, timer;
 let baseline = null, current = null, samples = [];
 let lastFrame = -1, lastScan = 0, loading = false;
+let facingMode = "user";
 
 function setStatus(text) {
   if ($("status").textContent !== text) $("status").textContent = text;
@@ -113,6 +115,7 @@ function stopCamera() {
   lastFrame = -1;
   $("start").disabled = loading;
   $("stop").disabled = true;
+  $("switchCamera").disabled = true;
   $("reference").disabled = true;
   $("metrics").textContent = "รอข้อมูลท่าทาง";
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -120,9 +123,10 @@ function stopCamera() {
 }
 $("stop").onclick = stopCamera;
 
-$("start").onclick = async () => {
+async function startCamera() {
   loading = true;
   $("start").disabled = true;
+  $("switchCamera").disabled = true;
   setStatus("กำลังโหลดโมเดลและเปิดกล้อง...");
   try {
     if (!navigator.mediaDevices?.getUserMedia)
@@ -141,12 +145,16 @@ $("start").onclick = async () => {
       });
     }
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user", width: { ideal: 640 } },
+      video: { facingMode: { exact: facingMode }, width: { ideal: 640 } },
       audio: false
-    });
+    }).catch(() => navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facingMode, width: { ideal: 640 } },
+      audio: false
+    }));
     video.srcObject = stream;
     await video.play();
     $("stop").disabled = false;
+    $("switchCamera").disabled = false;
     raf = requestAnimationFrame(loop);
   } catch (error) {
     stopCamera();
@@ -155,6 +163,314 @@ $("start").onclick = async () => {
     loading = false;
     $("start").disabled = Boolean(stream);
   }
+}
+
+$("start").onclick = () => { facingMode = "user"; startCamera(); };
+$("switchCamera").onclick = async () => {
+  facingMode = facingMode === "user" ? "environment" : "user";
+  stopCamera();
+  await startCamera();
+};
+
+function loop(now) {
+  if (!stream) return;
+  try {
+    if (video.readyState >= 2 &&
+        video.currentTime !== lastFrame && now - lastScan >= 100) {
+      lastFrame = video.currentTime;
+      lastScan = now;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      const result = model.detectForVideo(video, now);
+      evaluate(result.landmarks[0]);
+    }
+    raf = requestAnimationFrame(loop);
+  } catch (error) {
+    stopCamera();
+    setStatus("การประมวลผลหยุด: " + error.message);
+  }
+}
+
+function evaluate(points) {
+  current = null;
+  $("reference").disabled = true;
+  const sides = [[7, 11, 23], [8, 12, 24]];
+  const score = ids => Math.min(...ids.map(i => points?.[i]?.visibility ?? 0));
+  sides.sort((a, b) => score(b) - score(a));
+  const ids = sides[0];
+  const visible = points && score(ids) >= .7 &&
+    ids.every(i => points[i].x > 0 && points[i].x < 1 &&
+                   points[i].y > 0 && points[i].y < 1);
+  if (!visible) {
+    samples = [];
+    $("metrics").textContent = "ยังประเมินไม่ได้";
+    setStatus("ให้กล้องเห็นหู ไหล่ และสะโพกชัดเจน");
+    return;
+  }
+
+  const [ear, shoulder, hip] = ids.map(i => ({
+    x: points[i].x * canvas.width,
+    y: points[i].y * canvas.height
+  }));
+  ctx.strokeStyle = "#34d399";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(ear.x, ear.y);
+  ctx.lineTo(shoulder.x, shoulder.y);
+  ctx.lineTo(hip.x, hip.y);
+  ctx.stroke();
+  for (const p of [ear, shoulder, hip]) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#fbbf24";
+    ctx.fill();
+  }
+
+  const tilt = (top, bottom) =>
+    Math.atan2(Math.abs(top.x - bottom.x), bottom.y - top.y) * 180 / Math.PI;
+  samples.push({
+    neck: tilt(ear, shoulder),
+    trunk: tilt(shoulder, hip)
+  });
+  if (samples.length > 10) samples.shift();
+  if (samples.length < 10) {
+    setStatus("อยู่นิ่งสักครู่เพื่อเก็บค่าเฉลี่ย");
+    return;
+  }
+  current = {
+    neck: samples.reduce((s, p) => s + p.neck, 0) / samples.length,
+    trunk: samples.reduce((s, p) => s + p.trunk, 0) / samples.length
+  };
+  $("reference").disabled = false;
+  if (!baseline) {
+    setStatus("พร้อมแล้ว จัดท่าที่สบายและกดบันทึกท่าอ้างอิง");
+    return;
+  }
+
+  const neck = Math.abs(current.neck - baseline.neck);
+  const trunk = Math.abs(current.trunk - baseline.trunk);
+  const changed = neck > 12 || trunk > 12;
+  $("metrics").textContent =
+    `ต่างจากท่าอ้างอิง: แนวหู–ไหล่ ${neck.toFixed(0)}° | แนวไหล่–สะโพก ${trunk.toFixed(0)}°`;
+  setStatus(changed
+    ? "ท่าทางเปลี่ยนจากจุดอ้างอิง ลองตรวจความสบายและตำแหน่งจอ"
+    : "แนวร่างกายใกล้เคียงท่าอ้างอิง ไม่ใช่การยืนยันว่าท่าถูกต้อง");
+  updateAdvice(changed);
+}
+
+$("reference").onclick = () => {
+  if (!current) return;
+  baseline = { ...current };
+  setStatus("บันทึกแล้ว อย่าย้ายกล้องระหว่างเปรียบเทียบ");
+};
+
+$("pain").onchange = () => {
+  cancelRest();
+  $("clock").textContent = "30 วินาที";
+  updateAdvice();
+};
+$("rest").onclick = () => {
+  if ($("pain").checked) return;
+  cancelRest();
+  let remaining = 30;
+  $("rest").disabled = true;
+  $("clock").textContent = `${remaining} วินาที`;
+  timer = setInterval(() => {
+    remaining--;
+    $("clock").textContent = remaining ? `${remaining} วินาที` : "พักเสร็จแล้ว";
+    if (!remaining) cancelRest();
+  }, 1000);
+};
+$("cancel").onclick = () => {
+  cancelRest();
+  $("clock").textContent = "หยุดแล้ว";
+};
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    stopCamera();
+    cancelRest();
+  }
+});
+window.addEventListener("pagehide", stopCamera);
+</script>
+</body>
+</html>
+```เพิ่มปุ่มสลับกล้องหน้าและกล้องหลังให้แล้วครับ นำโค้ดชุดนี้ไปแทนที่ในไฟล์ `index.html` เดิมบน GitHub ได้เลยครับ
+
+```html
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Smart Posture</title>
+<style>
+  * { box-sizing: border-box }
+  body {
+    margin: 0; padding: 24px; background: #f0fdfa;
+    color: #153c36; font-family: system-ui, sans-serif;
+  }
+  main { max-width: 1050px; margin: auto }
+  h1 { font-size: clamp(24px, 4vw, 36px); margin-bottom: 8px }
+  .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px }
+  .card {
+    background: white; border-radius: 20px; padding: 20px;
+    box-shadow: 0 8px 30px #134e4a0b;
+  }
+  canvas { display: block; width: 100%; background: #132b29; border-radius: 14px }
+  video { display: none }
+  button {
+    border: 0; border-radius: 10px; padding: 12px 16px;
+    background: #0f766e; color: white; cursor: pointer;
+    margin: 4px 4px 4px 0; font: inherit;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed }
+  .secondary { background: #e2f3ef; color: #153c36 }
+  #status { font-weight: 600; min-height: 48px }
+  .note { font-size: 14px; line-height: 1.7; color: #526b65 }
+  #clock { font-size: 38px; margin: 12px 0 }
+  @media(max-width: 760px) {
+    body { padding: 14px }
+    .grid { grid-template-columns: 1fr }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>AI Smart Posture</h1>
+  <p>สังเกตท่าทาง • เปลี่ยนอิริยาบถ • พักอย่างสม่ำเสมอ</p>
+  <div class="grid">
+    <section class="card">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="canvas" width="640" height="480"></canvas>
+      <p class="note">
+        ตั้งกล้องระดับไหล่ หันด้านข้างให้กล้อง และให้เห็นหู ไหล่ และสะโพก
+        จัดท่าที่สบายก่อนบันทึกท่าอ้างอิง
+      </p>
+      <button id="start">เปิดกล้อง</button>
+      <button id="switchCamera" class="secondary" disabled>สลับกล้อง</button>
+      <button id="reference" disabled>บันทึกท่าอ้างอิง</button>
+      <button id="stop" class="secondary" disabled>ปิดกล้อง</button>
+      <p id="status" role="status" aria-live="polite">ยังไม่ได้เปิดกล้อง</p>
+      <p id="metrics">รอข้อมูลท่าทาง</p>
+    </section>
+    <aside class="card">
+      <h2>กิจกรรมพัก</h2>
+      <label>
+        <input id="pain" type="checkbox">
+        มีอาการเจ็บ ชา เวียนศีรษะ หรือบาดเจ็บ
+      </label>
+      <p id="advice">เปิดกล้องและบันทึกท่าอ้างอิงเพื่อเริ่มสังเกตการเปลี่ยนแปลง</p>
+      <div id="clock">30 วินาที</div>
+      <button id="rest">เริ่มจับเวลาพัก</button>
+      <button id="cancel" class="secondary">หยุด</button>
+      <p class="note">
+        หากเจ็บหรือชา ให้หยุดกิจกรรมและปรึกษาบุคลากรทางการแพทย์
+        กิจกรรมนี้เป็นคำแนะนำทั่วไป ไม่ใช่แผนรักษาเฉพาะบุคคล
+      </p>
+    </aside>
+  </div>
+  <p class="note">
+    รุ่นทดลอง: เปรียบเทียบการเปลี่ยนแปลงจากท่าอ้างอิงเท่านั้น
+    ไม่ยืนยันว่าท่าอ้างอิงถูกต้อง และไม่ตรวจวินิจฉัยหลังค่อมหรือไหล่ห่อ
+    ภาพประมวลผลในเบราว์เซอร์ โค้ดนี้ไม่บันทึกหรืออัปโหลดภาพ
+    แต่ต้องใช้อินเทอร์เน็ตเพื่อดาวน์โหลดโมเดลและไลบรารี
+  </p>
+</main>
+
+<script type="module">
+import { FilesetResolver, PoseLandmarker } from
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+const $ = id => document.getElementById(id);
+const video = $("video"), canvas = $("canvas");
+const ctx = canvas.getContext("2d");
+let model, stream, raf, timer;
+let baseline = null, current = null, samples = [];
+let lastFrame = -1, lastScan = 0, loading = false;
+let facingMode = "user";
+
+function setStatus(text) {
+  if ($("status").textContent !== text) $("status").textContent = text;
+}
+function cancelRest() {
+  clearInterval(timer);
+  timer = null;
+  $("rest").disabled = $("pain").checked;
+}
+function updateAdvice(changed = false) {
+  $("advice").textContent = $("pain").checked
+    ? "งดทำท่าฝืนหรือยืดตามระบบ หากอาการคงอยู่ควรรับคำแนะนำจากผู้เชี่ยวชาญ"
+    : changed
+      ? "แนวร่างกายเปลี่ยนจากท่าอ้างอิง ลองพัก เปลี่ยนอิริยาบถ และจัดจอให้มองได้สบาย"
+      : "พักสายตาจากจอ ผ่อนคลายไหล่ และขยับตัวเบา ๆ ในช่วงที่ไม่เจ็บ";
+}
+function stopCamera() {
+  cancelAnimationFrame(raf);
+  stream?.getTracks().forEach(track => track.stop());
+  stream = null;
+  video.srcObject = null;
+  baseline = current = null;
+  samples = [];
+  lastFrame = -1;
+  $("start").disabled = loading;
+  $("stop").disabled = true;
+  $("switchCamera").disabled = true;
+  $("reference").disabled = true;
+  $("metrics").textContent = "รอข้อมูลท่าทาง";
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  setStatus("ปิดกล้องแล้ว");
+}
+$("stop").onclick = stopCamera;
+
+async function startCamera() {
+  loading = true;
+  $("start").disabled = true;
+  $("switchCamera").disabled = true;
+  setStatus("กำลังโหลดโมเดลและเปิดกล้อง...");
+  try {
+    if (!navigator.mediaDevices?.getUserMedia)
+      throw new Error("กรุณาเปิดผ่าน localhost หรือ HTTPS");
+    if (!model) {
+      const files = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+      );
+      model = await PoseLandmarker.createFromOptions(files, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+        },
+        runningMode: "VIDEO",
+        numPoses: 1
+      });
+    }
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { exact: facingMode }, width: { ideal: 640 } },
+      audio: false
+    }).catch(() => navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facingMode, width: { ideal: 640 } },
+      audio: false
+    }));
+    video.srcObject = stream;
+    await video.play();
+    $("stop").disabled = false;
+    $("switchCamera").disabled = false;
+    raf = requestAnimationFrame(loop);
+  } catch (error) {
+    stopCamera();
+    setStatus("เปิดไม่ได้: " + error.message);
+  } finally {
+    loading = false;
+    $("start").disabled = Boolean(stream);
+  }
+}
+
+$("start").onclick = () => { facingMode = "user"; startCamera(); };
+$("switchCamera").onclick = async () => {
+  facingMode = facingMode === "user" ? "environment" : "user";
+  stopCamera();
+  await startCamera();
 };
 
 function loop(now) {
