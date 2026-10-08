@@ -3,131 +3,488 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI Smart Posture</title>
+<title>AI Smart Posture & Ergonomics Checker</title>
 <style>
-  * { box-sizing: border-box }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+
+  :root {
+    --teal-50:  #f0fdfa;
+    --teal-100: #ccfbf1;
+    --teal-200: #99f6e4;
+    --teal-600: #0d9488;
+    --teal-700: #0f766e;
+    --teal-800: #115e59;
+    --teal-900: #134e4a;
+    --text:     #153c36;
+    --muted:    #526b65;
+    --card-bg:  #ffffff;
+    --radius:   18px;
+    --shadow:   0 8px 32px #134e4a12;
+    --good:     #16a34a;
+    --warn:     #d97706;
+    --bad:      #dc2626;
+  }
+
   body {
-    margin: 0; padding: 24px; background: #f0fdfa;
-    color: #153c36; font-family: system-ui, sans-serif;
+    background: var(--teal-50);
+    color: var(--text);
+    font-family: system-ui, sans-serif;
+    padding: 24px 16px;
+    min-height: 100dvh;
   }
-  main { max-width: 1050px; margin: auto }
-  h1 { font-size: clamp(24px, 4vw, 36px); margin-bottom: 8px }
-  .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px }
+
+  main { max-width: 1080px; margin: auto }
+
+  /* ── Header ── */
+  header { text-align: center; margin-bottom: 28px }
+  header h1 { font-size: clamp(26px,4vw,40px); font-weight: 800; letter-spacing: -1px }
+  header p  { color: var(--muted); margin-top: 6px; font-size: 15px }
+
+  /* ── Grid ── */
+  .grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 20px; align-items: start }
+
+  /* ── Card ── */
   .card {
-    background: white; border-radius: 20px; padding: 20px;
-    box-shadow: 0 8px 30px #134e4a0b;
+    background: var(--card-bg); border-radius: var(--radius);
+    padding: 20px; box-shadow: var(--shadow); margin-bottom: 20px;
   }
-  canvas { display: block; width: 100%; background: #132b29; border-radius: 14px }
-  video { display: none }
+  .card h2 { font-size: 16px; font-weight: 700; margin-bottom: 12px; color: var(--teal-800) }
+
+  /* ── Camera panel ── */
+  .cam-wrap {
+    position: relative; background: #132b29;
+    border-radius: 14px; overflow: hidden;
+    aspect-ratio: 4/3; width: 100%;
+  }
+  canvas  { display: block; width: 100%; height: 100%; object-fit: contain }
+  video   { display: none }
+
+  /* ── Posture score ring ── */
+  .score-ring {
+    position: absolute; top: 10px; right: 10px;
+    width: 64px; height: 64px;
+    filter: drop-shadow(0 2px 8px #0008);
+  }
+
+  /* ── Angle badges on canvas ── */
+  .angle-overlay {
+    position: absolute; bottom: 10px; left: 10px;
+    display: flex; gap: 8px;
+  }
+  .badge {
+    background: #0009; color: #fff; border-radius: 8px;
+    padding: 4px 10px; font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; gap: 5px; backdrop-filter: blur(4px);
+  }
+  .badge-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0 }
+
+  /* ── Buttons ── */
+  .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px }
   button {
-    border: 0; border-radius: 10px; padding: 12px 16px;
-    background: #0f766e; color: white; cursor: pointer;
-    margin: 4px 4px 4px 0; font: inherit;
+    border: 0; border-radius: 10px; padding: 11px 16px;
+    background: var(--teal-700); color: white; cursor: pointer;
+    font: inherit; font-size: 14px; font-weight: 600;
+    transition: background .15s, transform .1s;
+    display: inline-flex; align-items: center; gap: 6px;
   }
-  button:disabled { opacity: .45; cursor: not-allowed }
-  .secondary { background: #e2f3ef; color: #153c36 }
-  #status { font-weight: 600; min-height: 48px }
-  .note { font-size: 14px; line-height: 1.7; color: #526b65 }
-  #clock { font-size: 38px; margin: 12px 0 }
+  button:hover:not(:disabled) { background: var(--teal-800); transform: translateY(-1px) }
+  button:active:not(:disabled) { transform: translateY(0) }
+  button.secondary { background: var(--teal-100); color: var(--teal-800) }
+  button.secondary:hover:not(:disabled) { background: var(--teal-200) }
+  button:disabled { opacity: .42; cursor: not-allowed }
+  button.danger { background: #fee2e2; color: #991b1b }
+  button.danger:hover:not(:disabled) { background: #fecaca }
+
+  /* ── Status bar ── */
+  #status {
+    margin-top: 10px; padding: 10px 14px;
+    border-radius: 10px; font-size: 14px; font-weight: 600;
+    background: var(--teal-100); color: var(--teal-800);
+    min-height: 42px; transition: background .3s, color .3s;
+  }
+  #status.warn  { background: #fef9c3; color: #854d0e }
+  #status.error { background: #fee2e2; color: #991b1b }
+
+  /* ── Score display ── */
+  .score-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px; border-radius: 12px;
+    background: #f8fafc; margin-bottom: 12px;
+  }
+  .score-num {
+    font-size: 42px; font-weight: 900; line-height: 1;
+    min-width: 64px; text-align: center;
+  }
+  .score-label { font-size: 14px; color: var(--muted) }
+  .score-label strong { display: block; font-size: 17px; color: var(--text) }
+
+  /* ── Progress bars ── */
+  .prog-wrap { margin-bottom: 14px }
+  .prog-label {
+    display: flex; justify-content: space-between;
+    font-size: 13px; margin-bottom: 4px;
+  }
+  .prog-track {
+    height: 8px; border-radius: 99px; background: #e5e7eb; overflow: hidden;
+  }
+  .prog-fill {
+    height: 100%; border-radius: 99px;
+    background: var(--good);
+    transition: width .5s cubic-bezier(.4,0,.2,1), background .5s;
+  }
+
+  /* ── Analysis result ── */
+  #analysisResult {
+    font-size: 15px; line-height: 1.7;
+    padding: 12px; border-radius: 10px;
+    background: #f8fafc;
+  }
+  .finding {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; margin-bottom: 8px;
+    font-size: 14px;
+  }
+  .finding.good { background: #f0fdf4 }
+  .finding.warn { background: #fffbeb }
+  .finding.bad  { background: #fef2f2 }
+  .finding-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px }
+
+  /* ── Stretch list ── */
+  #stretchList { list-style: none; padding: 0 }
+  #stretchList li {
+    padding: 10px 12px; border-radius: 10px;
+    margin-bottom: 8px; background: #f8fafc;
+    border-left: 3px solid var(--teal-600);
+    font-size: 14px; line-height: 1.6;
+  }
+  #stretchList li strong { color: var(--teal-700); display: block; margin-bottom: 2px }
+
+  /* ── History chip row ── */
+  .history-row {
+    display: flex; gap: 8px; overflow-x: auto;
+    padding-bottom: 4px; scrollbar-width: thin;
+  }
+  .hist-chip {
+    flex-shrink: 0; border: 1.5px solid var(--teal-200);
+    border-radius: 8px; padding: 6px 10px;
+    font-size: 12px; cursor: pointer; background: #fff;
+    transition: border-color .15s, background .15s;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+  }
+  .hist-chip:hover { border-color: var(--teal-600); background: var(--teal-50) }
+  .hist-chip .chip-score { font-weight: 800; font-size: 16px }
+  .hist-chip .chip-time  { color: var(--muted); font-size: 10px }
+
+  /* ── Export / notes ── */
+  #notesBox {
+    width: 100%; min-height: 80px; resize: vertical;
+    border: 1.5px solid #d1fae5; border-radius: 10px;
+    padding: 10px; font: inherit; font-size: 14px;
+    outline: none; background: #f8fafc;
+  }
+  #notesBox:focus { border-color: var(--teal-600) }
+
+  /* ── Note tip ── */
+  .tip { font-size: 13px; color: var(--muted); line-height: 1.6; margin-top: 6px }
+
+  /* ── Calibration overlay ── */
+  #calibOverlay {
+    display: none; position: absolute; inset: 0;
+    background: #000a; z-index: 10; border-radius: 14px;
+    align-items: center; justify-content: center; flex-direction: column;
+    color: #fff; gap: 10px; text-align: center; padding: 20px;
+  }
+  #calibOverlay.show { display: flex }
+  #calibCountdown { font-size: 80px; font-weight: 900; line-height: 1 }
+
+  /* ── Alert tone pill ── */
+  #alertPill {
+    position: fixed; bottom: 20px; right: 20px;
+    background: #dc2626; color: #fff;
+    border-radius: 99px; padding: 12px 20px;
+    font-weight: 700; font-size: 15px;
+    box-shadow: 0 4px 20px #dc262650;
+    transform: translateY(80px); opacity: 0;
+    transition: transform .35s, opacity .35s;
+    pointer-events: none; z-index: 100;
+  }
+  #alertPill.show { transform: translateY(0); opacity: 1 }
+
   @media(max-width: 760px) {
-    body { padding: 14px }
     .grid { grid-template-columns: 1fr }
+    body  { padding: 12px }
   }
 </style>
 </head>
 <body>
 <main>
-  <h1>AI Smart Posture</h1>
-  <p>สังเกตท่าทาง • เปลี่ยนอิริยาบถ • พักอย่างสม่ำเสมอ</p>
+  <header>
+    <h1>🧘 AI Smart Posture Checker</h1>
+    <p>สแกนท่าทางแบบเรียลไทม์ • วิเคราะห์ด้วย AI • รับโปรแกรมยืดกล้ามเนื้อเฉพาะบุคคล</p>
+  </header>
+
   <div class="grid">
-    <section class="card">
-      <video id="video" autoplay muted playsinline></video>
-      <canvas id="canvas" width="640" height="480"></canvas>
-      <p class="note">
-        ตั้งกล้องระดับไหล่ หันด้านข้างให้กล้อง และให้เห็นหู ไหล่ และสะโพก
-        จัดท่าที่สบายก่อนบันทึกท่าอ้างอิง
-      </p>
-      <button id="start">เปิดกล้อง</button>
-      <button id="switchCamera" class="secondary" disabled>สลับกล้อง</button>
-      <button id="reference" disabled>บันทึกท่าอ้างอิง</button>
-      <button id="stop" class="secondary" disabled>ปิดกล้อง</button>
-      <p id="status" role="status" aria-live="polite">ยังไม่ได้เปิดกล้อง</p>
-      <p id="metrics">รอข้อมูลท่าทาง</p>
+    <!-- ── Left column ── -->
+    <section class="card" style="margin-bottom:0">
+
+      <!-- Camera wrap -->
+      <div class="cam-wrap" id="camWrap">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="canvas" width="640" height="480"></canvas>
+
+        <!-- Live score ring SVG -->
+        <svg class="score-ring" id="scoreRingSvg" viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="26" fill="#0006" stroke="#fff2" stroke-width="3"/>
+          <circle id="scoreArc" cx="32" cy="32" r="26"
+            fill="none" stroke="#34d399" stroke-width="5"
+            stroke-dasharray="163.4" stroke-dashoffset="163.4"
+            stroke-linecap="round"
+            transform="rotate(-90 32 32)"/>
+          <text id="scoreText" x="32" y="36" text-anchor="middle"
+            font-size="16" font-weight="900" fill="white">--</text>
+        </svg>
+
+        <!-- Angle badges -->
+        <div class="angle-overlay">
+          <div class="badge" id="neckBadge">
+            <span class="badge-dot" id="neckDot" style="background:#fbbf24"></span>
+            <span id="neckVal">คอ --°</span>
+          </div>
+          <div class="badge" id="trunkBadge">
+            <span class="badge-dot" id="trunkDot" style="background:#fbbf24"></span>
+            <span id="trunkVal">ลำตัว --°</span>
+          </div>
+        </div>
+
+        <!-- Calibration overlay -->
+        <div id="calibOverlay">
+          <p style="font-size:18px;font-weight:700">ยืนตรงในท่าพักปกติ…</p>
+          <div id="calibCountdown">3</div>
+          <p style="font-size:14px;opacity:.75">กำลังบันทึก baseline ท่าทางของคุณ</p>
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <div class="btn-row">
+        <button id="start">📷 เปิดกล้อง</button>
+        <button id="switchCamera" class="secondary" disabled>🔄 สลับกล้อง</button>
+        <button id="calibBtn" class="secondary" disabled>🎯 Calibrate</button>
+        <button id="capture" disabled>📸 วิเคราะห์ภาพนิ่ง</button>
+        <button id="stop" class="danger" disabled>⏹ ปิดกล้อง</button>
+      </div>
+
+      <div id="status" role="status" aria-live="polite">ยังไม่ได้เปิดกล้อง</div>
+
+      <!-- Live angle progress bars -->
+      <div style="margin-top:14px">
+        <div class="prog-wrap">
+          <div class="prog-label">
+            <span>📐 มุมคอ (Neck Tilt)</span><span id="neckPct">--</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" id="neckBar" style="width:0%"></div></div>
+        </div>
+        <div class="prog-wrap">
+          <div class="prog-label">
+            <span>🔰 มุมลำตัว (Trunk Tilt)</span><span id="trunkPct">--</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" id="trunkBar" style="width:0%"></div></div>
+        </div>
+        <div class="prog-wrap">
+          <div class="prog-label">
+            <span>🌟 Posture Score</span><span id="scorePct">--</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" id="scoreBar" style="width:0%"></div></div>
+        </div>
+      </div>
     </section>
-    <aside class="card">
-      <h2>กิจกรรมพัก</h2>
-      <label>
-        <input id="pain" type="checkbox">
-        มีอาการเจ็บ ชา เวียนศีรษะ หรือบาดเจ็บ
-      </label>
-      <p id="advice">เปิดกล้องและบันทึกท่าอ้างอิงเพื่อเริ่มสังเกตการเปลี่ยนแปลง</p>
-      <div id="clock">30 วินาที</div>
-      <button id="rest">เริ่มจับเวลาพัก</button>
-      <button id="cancel" class="secondary">หยุด</button>
-      <p class="note">
-        หากเจ็บหรือชา ให้หยุดกิจกรรมและปรึกษาบุคลากรทางการแพทย์
-        กิจกรรมนี้เป็นคำแนะนำทั่วไป ไม่ใช่แผนรักษาเฉพาะบุคคล
-      </p>
-    </aside>
+
+    <!-- ── Right column ── -->
+    <div>
+      <!-- Analysis result -->
+      <aside class="card">
+        <h2>🔍 ผลการวิเคราะห์</h2>
+        <div id="analysisResult">
+          <div class="finding" style="color:var(--muted);font-size:14px">
+            กดเปิดกล้องและจับภาพเพื่อดูผลการวิเคราะห์ท่าทาง
+          </div>
+        </div>
+      </aside>
+
+      <!-- Stretch recommendations -->
+      <aside class="card">
+        <h2>🤸 ท่ายืดเหยียดแนะนำ</h2>
+        <ul id="stretchList">
+          <li style="border-color:#94a3b8">
+            <strong>รอผลการวิเคราะห์</strong>
+            กดเปิดกล้องและวิเคราะห์เพื่อรับโปรแกรมยืดกล้ามเนื้อที่เหมาะสมสำหรับคุณ
+          </li>
+        </ul>
+      </aside>
+
+      <!-- Session history -->
+      <aside class="card">
+        <h2>📊 ประวัติ Session</h2>
+        <div class="history-row" id="historyRow">
+          <p style="font-size:13px;color:var(--muted)">ยังไม่มีข้อมูล</p>
+        </div>
+        <p class="tip" style="margin-top:8px">
+          ⏱ เซสชันอัตโนมัติ: แจ้งเตือนทุก 
+          <select id="alertInterval" style="border:1.5px solid #d1fae5;border-radius:6px;padding:2px 6px;font:inherit;font-size:13px;background:#f8fafc">
+            <option value="0">ปิด</option>
+            <option value="60">1 นาที</option>
+            <option value="300" selected>5 นาที</option>
+            <option value="600">10 นาที</option>
+            <option value="1800">30 นาที</option>
+          </select>
+          เพื่อเตือนให้ตรวจสอบท่าทาง
+        </p>
+      </aside>
+
+      <!-- Notes + export -->
+      <aside class="card">
+        <h2>📝 บันทึกส่วนตัว</h2>
+        <textarea id="notesBox" placeholder="จดบันทึกอาการหรือสิ่งที่ต้องการปรับปรุง…"></textarea>
+        <div class="btn-row" style="margin-top:10px">
+          <button id="exportBtn" class="secondary" style="font-size:13px">
+            ⬇ ส่งออก PDF/PNG
+          </button>
+          <button id="clearHistBtn" class="danger" style="font-size:13px">
+            🗑 ล้างประวัติ
+          </button>
+        </div>
+      </aside>
+    </div>
   </div>
-  <p class="note">
-    รุ่นทดลอง: เปรียบเทียบการเปลี่ยนแปลงจากท่าอ้างอิงเท่านั้น
-    ไม่ยืนยันว่าท่าอ้างอิงถูกต้อง และไม่ตรวจวินิจฉัยหลังค่อมหรือไหล่ห่อ
-    ภาพประมวลผลในเบราว์เซอร์ โค้ดนี้ไม่บันทึกหรืออัปโหลดภาพ
-    แต่ต้องใช้อินเทอร์เน็ตเพื่อดาวน์โหลดโมเดลและไลบรารี
-  </p>
 </main>
+
+<!-- Alert pill (floating) -->
+<div id="alertPill">⚠️ ถึงเวลาตรวจสอบท่าทาง!</div>
 
 <script type="module">
 import { FilesetResolver, PoseLandmarker } from
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 
-const $ = id => document.getElementById(id);
-const video = $("video"), canvas = $("canvas");
-const ctx = canvas.getContext("2d");
-let model, stream, raf, timer;
-let baseline = null, current = null, samples = [];
-let lastFrame = -1, lastScan = 0, loading = false;
-let facingMode = "user";
+/* ─── DOM refs ─── */
+const $  = id => document.getElementById(id);
+const video    = $("video"),  canvas   = $("canvas");
+const ctx      = canvas.getContext("2d");
+const neckBar  = $("neckBar"),  trunkBar = $("trunkBar"),  scoreBar = $("scoreBar");
+const neckPct  = $("neckPct"),  trunkPct = $("trunkPct"),  scorePct = $("scorePct");
+const neckDot  = $("neckDot"), trunkDot  = $("trunkDot");
+const neckVal  = $("neckVal"), trunkVal  = $("trunkVal");
+const scoreArc = $("scoreArc"), scoreText= $("scoreText");
+const alertPill= $("alertPill");
 
-function setStatus(text) {
-  if ($("status").textContent !== text) $("status").textContent = text;
+/* ─── State ─── */
+let model, stream, raf;
+let lastFrame = -1, lastScan = 0, loading = false, isFrozen = false;
+let facingMode = "user";
+let latestPoints = null;
+let baseline = null;          // calibrated offset angles
+let sessionHistory = [];      // [{score, neck, trunk, ts, snapshot}]
+let alertTimer = null;
+let postureAlertTimeout = null;
+
+/* ─── Thresholds ─── */
+const NECK_GOOD  = 8;   // degrees
+const NECK_WARN  = 14;
+const TRUNK_GOOD = 8;
+const TRUNK_WARN = 14;
+
+/* ─── Helpers ─── */
+function setStatus(text, type = "") {
+  const el = $("status");
+  el.textContent = text;
+  el.className = type;
 }
-function cancelRest() {
-  clearInterval(timer);
-  timer = null;
-  $("rest").disabled = $("pain").checked;
+
+function angleColor(angle, good, warn) {
+  if (angle <= good) return getComputedStyle(document.documentElement).getPropertyValue("--good").trim();
+  if (angle <= warn) return "#d97706";
+  return "#dc2626";
 }
-function updateAdvice(changed = false) {
-  $("advice").textContent = $("pain").checked
-    ? "งดทำท่าฝืนหรือยืดตามระบบ หากอาการคงอยู่ควรรับคำแนะนำจากผู้เชี่ยวชาญ"
-    : changed
-      ? "แนวร่างกายเปลี่ยนจากท่าอ้างอิง ลองพัก เปลี่ยนอิริยาบถ และจัดจอให้มองได้สบาย"
-      : "พักสายตาจากจอ ผ่อนคลายไหล่ และขยับตัวเบา ๆ ในช่วงที่ไม่เจ็บ";
+
+function postureScore(neck, trunk) {
+  // Score 0-100 based on how close to ideal (0°) the angles are
+  const neckS  = Math.max(0, 100 - (neck  / NECK_WARN)  * 50);
+  const trunkS = Math.max(0, 100 - (trunk / TRUNK_WARN) * 50);
+  return Math.round((neckS * 0.55 + trunkS * 0.45));
 }
+
+function updateProgressBars(neck, trunk) {
+  const score  = postureScore(neck, trunk);
+  const neckPc = Math.min(100, (neck  / 30) * 100);
+  const trkPc  = Math.min(100, (trunk / 30) * 100);
+  const scorPc = score;
+
+  neckBar.style.width    = neckPc + "%";
+  trunkBar.style.width   = trkPc  + "%";
+  scoreBar.style.width   = scorPc + "%";
+  neckBar.style.background  = angleColor(neck,  NECK_GOOD,  NECK_WARN);
+  trunkBar.style.background = angleColor(trunk, TRUNK_GOOD, TRUNK_WARN);
+  scoreBar.style.background = angleColor(100 - score, 30, 60);
+
+  neckPct.textContent  = neck.toFixed(0)  + "°";
+  trunkPct.textContent = trunk.toFixed(0) + "°";
+  scorePct.textContent = score + " / 100";
+
+  // Ring arc
+  const circ = 163.4;
+  scoreArc.style.strokeDashoffset = (circ - (score / 100) * circ).toFixed(2);
+  scoreArc.style.stroke = angleColor(100 - score, 30, 60);
+  scoreText.textContent = score;
+  neckVal.textContent   = "คอ " + neck.toFixed(0)  + "°";
+  trunkVal.textContent  = "ลำตัว " + trunk.toFixed(0) + "°";
+  neckDot.style.background  = angleColor(neck,  NECK_GOOD, NECK_WARN);
+  trunkDot.style.background = angleColor(trunk, TRUNK_GOOD, TRUNK_WARN);
+
+  // Posture alert if bad for > 5 s
+  if (score < 50) {
+    if (!postureAlertTimeout) {
+      postureAlertTimeout = setTimeout(() => showAlertPill("🚨 ท่าทางไม่ดีมาสักพักแล้ว!"), 5000);
+    }
+  } else {
+    clearTimeout(postureAlertTimeout);
+    postureAlertTimeout = null;
+  }
+
+  return score;
+}
+
+function showAlertPill(msg) {
+  alertPill.textContent = msg;
+  alertPill.classList.add("show");
+  clearTimeout(postureAlertTimeout);
+  postureAlertTimeout = null;
+  setTimeout(() => alertPill.classList.remove("show"), 4000);
+}
+
+/* ─── Camera controls ─── */
 function stopCamera() {
   cancelAnimationFrame(raf);
-  stream?.getTracks().forEach(track => track.stop());
+  stream?.getTracks().forEach(t => t.stop());
   stream = null;
   video.srcObject = null;
-  baseline = current = null;
-  samples = [];
+  isFrozen = false;
   lastFrame = -1;
-  $("start").disabled = loading;
-  $("stop").disabled = true;
+  $("start").disabled  = loading;
+  $("stop").disabled   = true;
   $("switchCamera").disabled = true;
-  $("reference").disabled = true;
-  $("metrics").textContent = "รอข้อมูลท่าทาง";
+  $("capture").disabled = true;
+  $("calibBtn").disabled = true;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   setStatus("ปิดกล้องแล้ว");
+  clearTimeout(postureAlertTimeout); postureAlertTimeout = null;
 }
 $("stop").onclick = stopCamera;
 
 async function startCamera() {
-  loading = true;
+  loading = true; isFrozen = false;
   $("start").disabled = true;
   $("switchCamera").disabled = true;
-  setStatus("กำลังโหลดโมเดลและเปิดกล้อง...");
+  $("capture").disabled = true;
+  $("calibBtn").disabled = true;
+  setStatus("กำลังโหลด AI Model และเปิดกล้อง…");
   try {
     if (!navigator.mediaDevices?.getUserMedia)
       throw new Error("กรุณาเปิดผ่าน localhost หรือ HTTPS");
@@ -138,461 +495,362 @@ async function startCamera() {
       model = await PoseLandmarker.createFromOptions(files, {
         baseOptions: {
           modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+          delegate: "GPU"
         },
         runningMode: "VIDEO",
-        numPoses: 1
+        numPoses: 1,
+        minPoseDetectionConfidence: 0.5,
+        minPosePresenceConfidence: 0.5,
+        minTrackingConfidence:     0.5
       });
     }
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { exact: facingMode }, width: { ideal: 640 } },
       audio: false
     }).catch(() => navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facingMode, width: { ideal: 640 } },
-      audio: false
+      video: { facingMode, width: { ideal: 640 } }, audio: false
     }));
     video.srcObject = stream;
     await video.play();
     $("stop").disabled = false;
     $("switchCamera").disabled = false;
+    $("calibBtn").disabled = false;
     raf = requestAnimationFrame(loop);
-  } catch (error) {
+    setStatus("กล้องพร้อม — จัดท่าทางแล้วกด Calibrate หรือจับภาพนิ่ง");
+  } catch (err) {
     stopCamera();
-    setStatus("เปิดไม่ได้: " + error.message);
+    setStatus("เปิดไม่ได้: " + err.message, "error");
   } finally {
     loading = false;
     $("start").disabled = Boolean(stream);
   }
 }
-
-$("start").onclick = () => { facingMode = "user"; startCamera(); };
+$("start").onclick    = () => { facingMode = "user"; startCamera(); };
 $("switchCamera").onclick = async () => {
   facingMode = facingMode === "user" ? "environment" : "user";
-  stopCamera();
-  await startCamera();
+  stopCamera(); await startCamera();
 };
 
+/* ─── Render loop ─── */
 function loop(now) {
   if (!stream) return;
   try {
-    if (video.readyState >= 2 &&
-        video.currentTime !== lastFrame && now - lastScan >= 100) {
-      lastFrame = video.currentTime;
-      lastScan = now;
-      canvas.width = video.videoWidth;
+    if (!isFrozen && video.readyState >= 2 &&
+        video.currentTime !== lastFrame && now - lastScan >= 80) {
+      lastFrame = video.currentTime; lastScan = now;
+      canvas.width  = video.videoWidth;
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0);
       const result = model.detectForVideo(video, now);
-      evaluate(result.landmarks[0]);
+      latestPoints = result.landmarks[0];
+      evaluateLive(latestPoints);
     }
     raf = requestAnimationFrame(loop);
-  } catch (error) {
+  } catch (err) {
     stopCamera();
-    setStatus("การประมวลผลหยุด: " + error.message);
+    setStatus("การประมวลผลหยุด: " + err.message, "error");
   }
 }
 
-function evaluate(points) {
-  current = null;
-  $("reference").disabled = true;
+/* ─── Side picker ─── */
+function pickBestSide(points) {
+  if (!points) return null;
   const sides = [[7, 11, 23], [8, 12, 24]];
-  const score = ids => Math.min(...ids.map(i => points?.[i]?.visibility ?? 0));
+  const score = ids => Math.min(...ids.map(i => points[i]?.visibility ?? 0));
   sides.sort((a, b) => score(b) - score(a));
   const ids = sides[0];
-  const visible = points && score(ids) >= .7 &&
+  const ok   = score(ids) >= .5 &&
     ids.every(i => points[i].x > 0 && points[i].x < 1 &&
                    points[i].y > 0 && points[i].y < 1);
-  if (!visible) {
-    samples = [];
-    $("metrics").textContent = "ยังประเมินไม่ได้";
-    setStatus("ให้กล้องเห็นหู ไหล่ และสะโพกชัดเจน");
-    return;
-  }
+  return ok ? ids : null;
+}
 
-  const [ear, shoulder, hip] = ids.map(i => ({
+/* ─── Angle calculation ─── */
+function tilt(top, bottom) {
+  return Math.atan2(Math.abs(top.x - bottom.x), bottom.y - top.y) * 180 / Math.PI;
+}
+
+function getAngles(points) {
+  const ids = pickBestSide(points);
+  if (!ids) return null;
+  const pts = ids.map(i => ({
     x: points[i].x * canvas.width,
     y: points[i].y * canvas.height
   }));
-  ctx.strokeStyle = "#34d399";
+  let neck  = tilt(pts[0], pts[1]);
+  let trunk = tilt(pts[1], pts[2]);
+  // Apply calibration baseline offset
+  if (baseline) {
+    neck  = Math.max(0, neck  - baseline.neck);
+    trunk = Math.max(0, trunk - baseline.trunk);
+  }
+  return { ids, pts, neck, trunk };
+}
+
+/* ─── Live evaluation ─── */
+function evaluateLive(points) {
+  const data = getAngles(points);
+  if (!data) {
+    $("capture").disabled = true;
+    setStatus("ให้กล้องเห็นหู ไหล่ และสะโพกชัดเจน", "warn");
+    return;
+  }
+  const { pts, neck, trunk } = data;
+
+  // Draw skeleton
   ctx.lineWidth = 4;
+  ctx.strokeStyle = "#34d399";
   ctx.beginPath();
-  ctx.moveTo(ear.x, ear.y);
-  ctx.lineTo(shoulder.x, shoulder.y);
-  ctx.lineTo(hip.x, hip.y);
+  ctx.moveTo(pts[0].x, pts[0].y);
+  ctx.lineTo(pts[1].x, pts[1].y);
+  ctx.lineTo(pts[2].x, pts[2].y);
   ctx.stroke();
-  for (const p of [ear, shoulder, hip]) {
+
+  // Draw angle arc at neck joint
+  drawAngleArc(pts[0], pts[1], neck, angleColor(neck, NECK_GOOD, NECK_WARN));
+  drawAngleArc(pts[1], pts[2], trunk, angleColor(trunk, TRUNK_GOOD, TRUNK_WARN));
+
+  // Draw dots
+  [pts[0], pts[1], pts[2]].forEach((p, i) => {
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, i === 1 ? 8 : 6, 0, Math.PI * 2);
     ctx.fillStyle = "#fbbf24";
     ctx.fill();
-  }
-
-  const tilt = (top, bottom) =>
-    Math.atan2(Math.abs(top.x - bottom.x), bottom.y - top.y) * 180 / Math.PI;
-  samples.push({
-    neck: tilt(ear, shoulder),
-    trunk: tilt(shoulder, hip)
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
   });
-  if (samples.length > 10) samples.shift();
-  if (samples.length < 10) {
-    setStatus("อยู่นิ่งสักครู่เพื่อเก็บค่าเฉลี่ย");
-    return;
-  }
-  current = {
-    neck: samples.reduce((s, p) => s + p.neck, 0) / samples.length,
-    trunk: samples.reduce((s, p) => s + p.trunk, 0) / samples.length
-  };
-  $("reference").disabled = false;
-  if (!baseline) {
-    setStatus("พร้อมแล้ว จัดท่าที่สบายและกดบันทึกท่าอ้างอิง");
-    return;
-  }
 
-  const neck = Math.abs(current.neck - baseline.neck);
-  const trunk = Math.abs(current.trunk - baseline.trunk);
-  const changed = neck > 12 || trunk > 12;
-  $("metrics").textContent =
-    `ต่างจากท่าอ้างอิง: แนวหู–ไหล่ ${neck.toFixed(0)}° | แนวไหล่–สะโพก ${trunk.toFixed(0)}°`;
-  setStatus(changed
-    ? "ท่าทางเปลี่ยนจากจุดอ้างอิง ลองตรวจความสบายและตำแหน่งจอ"
-    : "แนวร่างกายใกล้เคียงท่าอ้างอิง ไม่ใช่การยืนยันว่าท่าถูกต้อง");
-  updateAdvice(changed);
+  updateProgressBars(neck, trunk);
+  $("capture").disabled = false;
+  setStatus("✅ พร้อม — กด วิเคราะห์ภาพนิ่ง เพื่อรับรายงานเต็ม");
 }
 
-$("reference").onclick = () => {
-  if (!current) return;
-  baseline = { ...current };
-  setStatus("บันทึกแล้ว อย่าย้ายกล้องระหว่างเปรียบเทียบ");
-};
-
-$("pain").onchange = () => {
-  cancelRest();
-  $("clock").textContent = "30 วินาที";
-  updateAdvice();
-};
-$("rest").onclick = () => {
-  if ($("pain").checked) return;
-  cancelRest();
-  let remaining = 30;
-  $("rest").disabled = true;
-  $("clock").textContent = `${remaining} วินาที`;
-  timer = setInterval(() => {
-    remaining--;
-    $("clock").textContent = remaining ? `${remaining} วินาที` : "พักเสร็จแล้ว";
-    if (!remaining) cancelRest();
-  }, 1000);
-};
-$("cancel").onclick = () => {
-  cancelRest();
-  $("clock").textContent = "หยุดแล้ว";
-};
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    stopCamera();
-    cancelRest();
-  }
-});
-window.addEventListener("pagehide", stopCamera);
-</script>
-</body>
-</html>
-```เพิ่มปุ่มสลับกล้องหน้าและกล้องหลังให้แล้วครับ นำโค้ดชุดนี้ไปแทนที่ในไฟล์ `index.html` เดิมบน GitHub ได้เลยครับ
-
-```html
-<!doctype html>
-<html lang="th">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI Smart Posture</title>
-<style>
-  * { box-sizing: border-box }
-  body {
-    margin: 0; padding: 24px; background: #f0fdfa;
-    color: #153c36; font-family: system-ui, sans-serif;
-  }
-  main { max-width: 1050px; margin: auto }
-  h1 { font-size: clamp(24px, 4vw, 36px); margin-bottom: 8px }
-  .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px }
-  .card {
-    background: white; border-radius: 20px; padding: 20px;
-    box-shadow: 0 8px 30px #134e4a0b;
-  }
-  canvas { display: block; width: 100%; background: #132b29; border-radius: 14px }
-  video { display: none }
-  button {
-    border: 0; border-radius: 10px; padding: 12px 16px;
-    background: #0f766e; color: white; cursor: pointer;
-    margin: 4px 4px 4px 0; font: inherit;
-  }
-  button:disabled { opacity: .45; cursor: not-allowed }
-  .secondary { background: #e2f3ef; color: #153c36 }
-  #status { font-weight: 600; min-height: 48px }
-  .note { font-size: 14px; line-height: 1.7; color: #526b65 }
-  #clock { font-size: 38px; margin: 12px 0 }
-  @media(max-width: 760px) {
-    body { padding: 14px }
-    .grid { grid-template-columns: 1fr }
-  }
-</style>
-</head>
-<body>
-<main>
-  <h1>AI Smart Posture</h1>
-  <p>สังเกตท่าทาง • เปลี่ยนอิริยาบถ • พักอย่างสม่ำเสมอ</p>
-  <div class="grid">
-    <section class="card">
-      <video id="video" autoplay muted playsinline></video>
-      <canvas id="canvas" width="640" height="480"></canvas>
-      <p class="note">
-        ตั้งกล้องระดับไหล่ หันด้านข้างให้กล้อง และให้เห็นหู ไหล่ และสะโพก
-        จัดท่าที่สบายก่อนบันทึกท่าอ้างอิง
-      </p>
-      <button id="start">เปิดกล้อง</button>
-      <button id="switchCamera" class="secondary" disabled>สลับกล้อง</button>
-      <button id="reference" disabled>บันทึกท่าอ้างอิง</button>
-      <button id="stop" class="secondary" disabled>ปิดกล้อง</button>
-      <p id="status" role="status" aria-live="polite">ยังไม่ได้เปิดกล้อง</p>
-      <p id="metrics">รอข้อมูลท่าทาง</p>
-    </section>
-    <aside class="card">
-      <h2>กิจกรรมพัก</h2>
-      <label>
-        <input id="pain" type="checkbox">
-        มีอาการเจ็บ ชา เวียนศีรษะ หรือบาดเจ็บ
-      </label>
-      <p id="advice">เปิดกล้องและบันทึกท่าอ้างอิงเพื่อเริ่มสังเกตการเปลี่ยนแปลง</p>
-      <div id="clock">30 วินาที</div>
-      <button id="rest">เริ่มจับเวลาพัก</button>
-      <button id="cancel" class="secondary">หยุด</button>
-      <p class="note">
-        หากเจ็บหรือชา ให้หยุดกิจกรรมและปรึกษาบุคลากรทางการแพทย์
-        กิจกรรมนี้เป็นคำแนะนำทั่วไป ไม่ใช่แผนรักษาเฉพาะบุคคล
-      </p>
-    </aside>
-  </div>
-  <p class="note">
-    รุ่นทดลอง: เปรียบเทียบการเปลี่ยนแปลงจากท่าอ้างอิงเท่านั้น
-    ไม่ยืนยันว่าท่าอ้างอิงถูกต้อง และไม่ตรวจวินิจฉัยหลังค่อมหรือไหล่ห่อ
-    ภาพประมวลผลในเบราว์เซอร์ โค้ดนี้ไม่บันทึกหรืออัปโหลดภาพ
-    แต่ต้องใช้อินเทอร์เน็ตเพื่อดาวน์โหลดโมเดลและไลบรารี
-  </p>
-</main>
-
-<script type="module">
-import { FilesetResolver, PoseLandmarker } from
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
-
-const $ = id => document.getElementById(id);
-const video = $("video"), canvas = $("canvas");
-const ctx = canvas.getContext("2d");
-let model, stream, raf, timer;
-let baseline = null, current = null, samples = [];
-let lastFrame = -1, lastScan = 0, loading = false;
-let facingMode = "user";
-
-function setStatus(text) {
-  if ($("status").textContent !== text) $("status").textContent = text;
-}
-function cancelRest() {
-  clearInterval(timer);
-  timer = null;
-  $("rest").disabled = $("pain").checked;
-}
-function updateAdvice(changed = false) {
-  $("advice").textContent = $("pain").checked
-    ? "งดทำท่าฝืนหรือยืดตามระบบ หากอาการคงอยู่ควรรับคำแนะนำจากผู้เชี่ยวชาญ"
-    : changed
-      ? "แนวร่างกายเปลี่ยนจากท่าอ้างอิง ลองพัก เปลี่ยนอิริยาบถ และจัดจอให้มองได้สบาย"
-      : "พักสายตาจากจอ ผ่อนคลายไหล่ และขยับตัวเบา ๆ ในช่วงที่ไม่เจ็บ";
-}
-function stopCamera() {
-  cancelAnimationFrame(raf);
-  stream?.getTracks().forEach(track => track.stop());
-  stream = null;
-  video.srcObject = null;
-  baseline = current = null;
-  samples = [];
-  lastFrame = -1;
-  $("start").disabled = loading;
-  $("stop").disabled = true;
-  $("switchCamera").disabled = true;
-  $("reference").disabled = true;
-  $("metrics").textContent = "รอข้อมูลท่าทาง";
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  setStatus("ปิดกล้องแล้ว");
-}
-$("stop").onclick = stopCamera;
-
-async function startCamera() {
-  loading = true;
-  $("start").disabled = true;
-  $("switchCamera").disabled = true;
-  setStatus("กำลังโหลดโมเดลและเปิดกล้อง...");
-  try {
-    if (!navigator.mediaDevices?.getUserMedia)
-      throw new Error("กรุณาเปิดผ่าน localhost หรือ HTTPS");
-    if (!model) {
-      const files = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-      );
-      model = await PoseLandmarker.createFromOptions(files, {
-        baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
-        },
-        runningMode: "VIDEO",
-        numPoses: 1
-      });
-    }
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { exact: facingMode }, width: { ideal: 640 } },
-      audio: false
-    }).catch(() => navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facingMode, width: { ideal: 640 } },
-      audio: false
-    }));
-    video.srcObject = stream;
-    await video.play();
-    $("stop").disabled = false;
-    $("switchCamera").disabled = false;
-    raf = requestAnimationFrame(loop);
-  } catch (error) {
-    stopCamera();
-    setStatus("เปิดไม่ได้: " + error.message);
-  } finally {
-    loading = false;
-    $("start").disabled = Boolean(stream);
-  }
-}
-
-$("start").onclick = () => { facingMode = "user"; startCamera(); };
-$("switchCamera").onclick = async () => {
-  facingMode = facingMode === "user" ? "environment" : "user";
-  stopCamera();
-  await startCamera();
-};
-
-function loop(now) {
-  if (!stream) return;
-  try {
-    if (video.readyState >= 2 &&
-        video.currentTime !== lastFrame && now - lastScan >= 100) {
-      lastFrame = video.currentTime;
-      lastScan = now;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-      const result = model.detectForVideo(video, now);
-      evaluate(result.landmarks[0]);
-    }
-    raf = requestAnimationFrame(loop);
-  } catch (error) {
-    stopCamera();
-    setStatus("การประมวลผลหยุด: " + error.message);
-  }
-}
-
-function evaluate(points) {
-  current = null;
-  $("reference").disabled = true;
-  const sides = [[7, 11, 23], [8, 12, 24]];
-  const score = ids => Math.min(...ids.map(i => points?.[i]?.visibility ?? 0));
-  sides.sort((a, b) => score(b) - score(a));
-  const ids = sides[0];
-  const visible = points && score(ids) >= .7 &&
-    ids.every(i => points[i].x > 0 && points[i].x < 1 &&
-                   points[i].y > 0 && points[i].y < 1);
-  if (!visible) {
-    samples = [];
-    $("metrics").textContent = "ยังประเมินไม่ได้";
-    setStatus("ให้กล้องเห็นหู ไหล่ และสะโพกชัดเจน");
-    return;
-  }
-
-  const [ear, shoulder, hip] = ids.map(i => ({
-    x: points[i].x * canvas.width,
-    y: points[i].y * canvas.height
-  }));
-  ctx.strokeStyle = "#34d399";
-  ctx.lineWidth = 4;
+function drawAngleArc(p1, joint, angle, color) {
+  const r = 22;
   ctx.beginPath();
-  ctx.moveTo(ear.x, ear.y);
-  ctx.lineTo(shoulder.x, shoulder.y);
-  ctx.lineTo(hip.x, hip.y);
+  ctx.arc(joint.x, joint.y, r, -Math.PI / 2 - 0.2, -Math.PI / 2 + (angle / 90) * Math.PI, false);
+  ctx.strokeStyle = color + "cc";
+  ctx.lineWidth = 3;
   ctx.stroke();
-  for (const p of [ear, shoulder, hip]) {
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = "#fbbf24";
-    ctx.fill();
-  }
-
-  const tilt = (top, bottom) =>
-    Math.atan2(Math.abs(top.x - bottom.x), bottom.y - top.y) * 180 / Math.PI;
-  samples.push({
-    neck: tilt(ear, shoulder),
-    trunk: tilt(shoulder, hip)
-  });
-  if (samples.length > 10) samples.shift();
-  if (samples.length < 10) {
-    setStatus("อยู่นิ่งสักครู่เพื่อเก็บค่าเฉลี่ย");
-    return;
-  }
-  current = {
-    neck: samples.reduce((s, p) => s + p.neck, 0) / samples.length,
-    trunk: samples.reduce((s, p) => s + p.trunk, 0) / samples.length
-  };
-  $("reference").disabled = false;
-  if (!baseline) {
-    setStatus("พร้อมแล้ว จัดท่าที่สบายและกดบันทึกท่าอ้างอิง");
-    return;
-  }
-
-  const neck = Math.abs(current.neck - baseline.neck);
-  const trunk = Math.abs(current.trunk - baseline.trunk);
-  const changed = neck > 12 || trunk > 12;
-  $("metrics").textContent =
-    `ต่างจากท่าอ้างอิง: แนวหู–ไหล่ ${neck.toFixed(0)}° | แนวไหล่–สะโพก ${trunk.toFixed(0)}°`;
-  setStatus(changed
-    ? "ท่าทางเปลี่ยนจากจุดอ้างอิง ลองตรวจความสบายและตำแหน่งจอ"
-    : "แนวร่างกายใกล้เคียงท่าอ้างอิง ไม่ใช่การยืนยันว่าท่าถูกต้อง");
-  updateAdvice(changed);
 }
 
-$("reference").onclick = () => {
-  if (!current) return;
-  baseline = { ...current };
-  setStatus("บันทึกแล้ว อย่าย้ายกล้องระหว่างเปรียบเทียบ");
-};
-
-$("pain").onchange = () => {
-  cancelRest();
-  $("clock").textContent = "30 วินาที";
-  updateAdvice();
-};
-$("rest").onclick = () => {
-  if ($("pain").checked) return;
-  cancelRest();
-  let remaining = 30;
-  $("rest").disabled = true;
-  $("clock").textContent = `${remaining} วินาที`;
-  timer = setInterval(() => {
-    remaining--;
-    $("clock").textContent = remaining ? `${remaining} วินาที` : "พักเสร็จแล้ว";
-    if (!remaining) cancelRest();
+/* ─── Calibration ─── */
+$("calibBtn").onclick = () => {
+  const overlay = $("calibOverlay");
+  overlay.classList.add("show");
+  let count = 3;
+  $("calibCountdown").textContent = count;
+  const tick = setInterval(() => {
+    count--;
+    if (count > 0) { $("calibCountdown").textContent = count; return; }
+    clearInterval(tick);
+    overlay.classList.remove("show");
+    if (latestPoints) {
+      const data = getAngles(latestPoints);
+      if (data) {
+        // Store raw angles (without previous baseline) as baseline
+        const ids = pickBestSide(latestPoints);
+        const pts = ids.map(i => ({
+          x: latestPoints[i].x * canvas.width,
+          y: latestPoints[i].y * canvas.height
+        }));
+        baseline = { neck: tilt(pts[0], pts[1]), trunk: tilt(pts[1], pts[2]) };
+        setStatus("🎯 Calibrate สำเร็จ! Baseline บันทึกแล้ว (คอ " +
+          baseline.neck.toFixed(0) + "° / ลำตัว " + baseline.trunk.toFixed(0) + "°)");
+      }
+    } else {
+      setStatus("Calibrate ล้มเหลว — ให้กล้องเห็นร่างกายชัดเจน", "warn");
+    }
   }, 1000);
 };
-$("cancel").onclick = () => {
-  cancelRest();
-  $("clock").textContent = "หยุดแล้ว";
+
+/* ─── Snapshot & analysis ─── */
+$("capture").onclick = () => {
+  if (!latestPoints) return;
+  isFrozen = true;
+  $("capture").disabled = true;
+
+  const data = getAngles(latestPoints);
+  if (!data) { isFrozen = false; return; }
+
+  const { neck, trunk } = data;
+  const score = postureScore(neck, trunk);
+  const snapshot = canvas.toDataURL("image/jpeg", 0.7);
+
+  // Save to history
+  const entry = { score, neck, trunk, ts: Date.now(), snapshot };
+  sessionHistory.unshift(entry);
+  if (sessionHistory.length > 10) sessionHistory.pop();
+  renderHistory();
+
+  // Render full report
+  renderAnalysis(neck, trunk, score);
+  setStatus("📊 วิเคราะห์เสร็จ! คะแนน: " + score + "/100 — กด เปิดกล้อง เพื่อสแกนใหม่");
+
+  // Unfreeze after 2s
+  setTimeout(() => {
+    isFrozen = false;
+    if (stream) $("capture").disabled = false;
+  }, 2000);
 };
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    stopCamera();
-    cancelRest();
+
+/* ─── Analysis renderer ─── */
+function renderAnalysis(neck, trunk, score) {
+  const findings = [];
+
+  // Neck
+  if (neck <= NECK_GOOD) {
+    findings.push({ cls: "good", icon: "✅", title: "ท่าคอดี", desc: `มุมคอ ${neck.toFixed(0)}° อยู่ในเกณฑ์ดีเยี่ยม` });
+  } else if (neck <= NECK_WARN) {
+    findings.push({ cls: "warn", icon: "⚠️", title: "คอเอียงเล็กน้อย", desc: `มุมคอ ${neck.toFixed(0)}° ควรปรับตำแหน่งหน้าจอหรือเก้าอี้` });
+  } else {
+    findings.push({ cls: "bad", icon: "🔴", title: "Forward Head Posture", desc: `มุมคอ ${neck.toFixed(0)}° ยื่นไปด้านหน้ามากเกินไป เสี่ยงปวดคอและไมเกรน` });
   }
-});
+
+  // Trunk
+  if (trunk <= TRUNK_GOOD) {
+    findings.push({ cls: "good", icon: "✅", title: "ลำตัวตรงดี", desc: `มุมลำตัว ${trunk.toFixed(0)}° สมดุลดีเยี่ยม` });
+  } else if (trunk <= TRUNK_WARN) {
+    findings.push({ cls: "warn", icon: "⚠️", title: "ลำตัวเอียงเล็กน้อย", desc: `มุมลำตัว ${trunk.toFixed(0)}° ควรปรับพนักพิงหรือใช้ lumbar support` });
+  } else {
+    findings.push({ cls: "bad", icon: "🔴", title: "Slouched / Kyphosis", desc: `มุมลำตัว ${trunk.toFixed(0)}° ค่อมหรือเอนไปด้านหน้ามาก เสี่ยงปวดหลังล่างและปวดไหล่` });
+  }
+
+  // Overall
+  if (score >= 85) {
+    findings.push({ cls: "good", icon: "🌟", title: "ท่าทางยอดเยี่ยม", desc: `คะแนนรวม ${score}/100 — รักษาท่าทางนี้ไว้!` });
+  } else if (score >= 60) {
+    findings.push({ cls: "warn", icon: "💪", title: "ท่าทางพอใช้", desc: `คะแนนรวม ${score}/100 — มีจุดที่ปรับปรุงได้` });
+  } else {
+    findings.push({ cls: "bad", icon: "🏥", title: "ต้องแก้ไขด่วน", desc: `คะแนนรวม ${score}/100 — กรุณาปรับท่าทางทันที` });
+  }
+
+  $("analysisResult").innerHTML = findings.map(f => `
+    <div class="finding ${f.cls}">
+      <span class="finding-icon">${f.icon}</span>
+      <div><strong>${f.title}</strong><br><span style="color:var(--muted)">${f.desc}</span></div>
+    </div>
+  `).join("");
+
+  renderStretches(neck, trunk, score);
+}
+
+/* ─── Stretch programs ─── */
+function renderStretches(neck, trunk, score) {
+  const all = [];
+
+  // Always included (general wellness)
+  all.push({ name: "🙆 Chin Tuck", desc: "ดึงคอถอยหลังตรง ๆ ค้างไว้ 5 วินาที × 5 ครั้ง ทำ 3 รอบ/วัน", target: "ลด Forward Head" });
+  all.push({ name: "💪 Chest Opener", desc: "ประสานมือด้านหลัง ยืดอกและยกขึ้น ค้างไว้ 20 วินาที × 3 ครั้ง", target: "เปิดหน้าอก" });
+
+  if (neck > NECK_GOOD) {
+    all.push({ name: "🤕 Upper Trap Stretch", desc: "เอียงศีรษะเข้าหาไหล่ซ้าย/ขวา ค้างไว้ 15 วินาที × 3 ครั้งแต่ละข้าง", target: "คลายกล้ามเนื้อคอด้านบน" });
+    all.push({ name: "🌀 Neck Rotation", desc: "หันศีรษะซ้าย-ขวา ช้า ๆ 10 ครั้ง ทำ 2 รอบ/ชั่วโมง", target: "ลดความตึงคอ" });
+    all.push({ name: "📱 Levator Scapula Stretch", desc: "หันหน้าเฉียง 45° แล้วก้มลง กดด้วยมือเบา ๆ ค้างไว้ 20 วินาที", target: "ยืดกล้ามเนื้อยกสะบัก" });
+  }
+  if (trunk > TRUNK_GOOD) {
+    all.push({ name: "🪑 Seated Back Extension", desc: "นั่งชิดขอบเก้าอี้ แอ่นหลังช่วงบนพาดพนักพิง ค้างไว้ 15 วินาที × 5 ครั้ง", target: "คืนแนว Thoracic Spine" });
+    all.push({ name: "🚪 Doorway Pec Stretch", desc: "วางมือที่กรอบประตู ก้าวเดินออกไปด้านหน้า ค้างไว้ 20 วินาที × 3 ครั้ง", target: "ยืดกล้ามเนื้อหน้าอก" });
+    all.push({ name: "🦺 Thoracic Rotation", desc: "นั่งตัวตรง ประสานมือที่ท้ายทอย บิดตัวซ้าย-ขวา 10 ครั้ง", target: "เพิ่ม Mobility หลังส่วนบน" });
+  }
+  if (score >= 85) {
+    all.push({ name: "🧘 Mindful Breathing", desc: "หายใจเข้าลึก 4 วินาที กลั้น 4 วินาที หายใจออก 6 วินาที × 5 รอบ", target: "ผ่อนคลายกล้ามเนื้อทั่วร่าง" });
+  }
+
+  $("stretchList").innerHTML = all.slice(0, 5).map(s => `
+    <li>
+      <strong>${s.name} <span style="font-size:11px;color:var(--muted);font-weight:400">(${s.target})</span></strong>
+      ${s.desc}
+    </li>
+  `).join("");
+}
+
+/* ─── History ─── */
+function renderHistory() {
+  if (!sessionHistory.length) {
+    $("historyRow").innerHTML = `<p style="font-size:13px;color:var(--muted)">ยังไม่มีข้อมูล</p>`;
+    return;
+  }
+  $("historyRow").innerHTML = sessionHistory.map((e, i) => {
+    const t = new Date(e.ts).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+    const c = e.score >= 85 ? "#16a34a" : e.score >= 60 ? "#d97706" : "#dc2626";
+    return `<div class="hist-chip" title="คอ ${e.neck.toFixed(0)}° / ลำตัว ${e.trunk.toFixed(0)}°" data-idx="${i}">
+      <span class="chip-score" style="color:${c}">${e.score}</span>
+      <span class="chip-time">${t}</span>
+    </div>`;
+  }).join("");
+  $("historyRow").querySelectorAll(".hist-chip").forEach(chip => {
+    chip.onclick = () => {
+      const e = sessionHistory[+chip.dataset.idx];
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const img = new Image();
+      img.onload = () => {
+        canvas.width = img.width; canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+      };
+      img.src = e.snapshot;
+      renderAnalysis(e.neck, e.trunk, e.score);
+      isFrozen = true;
+      if (stream) $("capture").disabled = false;
+    };
+  });
+}
+
+/* ─── Posture alert interval ─── */
+$("alertInterval").onchange = function() {
+  clearInterval(alertTimer);
+  const secs = +this.value;
+  if (!secs) return;
+  alertTimer = setInterval(() => showAlertPill("⏰ ถึงเวลาตรวจสอบท่าทาง!"), secs * 1000);
+};
+
+/* ─── Clear history ─── */
+$("clearHistBtn").onclick = () => {
+  sessionHistory = [];
+  renderHistory();
+};
+
+/* ─── Export ─── */
+$("exportBtn").onclick = async () => {
+  if (!sessionHistory.length) {
+    setStatus("ยังไม่มีข้อมูลที่จะส่งออก", "warn"); return;
+  }
+  const notes = $("notesBox").value;
+  const last  = sessionHistory[0];
+  // Build a simple printable page
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+    <title>Posture Report</title>
+    <style>body{font-family:sans-serif;padding:24px;max-width:720px;margin:auto}
+    img{width:100%;border-radius:12px;margin:12px 0}
+    h1{color:#0f766e}table{border-collapse:collapse;width:100%}
+    td,th{border:1px solid #ccc;padding:8px 12px;text-align:left}
+    th{background:#f0fdfa}</style></head><body>
+    <h1>🧘 Posture Report — ${new Date().toLocaleString("th-TH")}</h1>
+    <img src="${last.snapshot}"/>
+    <table>
+      <tr><th>มุมคอ</th><td>${last.neck.toFixed(1)}°</td></tr>
+      <tr><th>มุมลำตัว</th><td>${last.trunk.toFixed(1)}°</td></tr>
+      <tr><th>คะแนนรวม</th><td>${last.score}/100</td></tr>
+    </table>
+    <h2>บันทึกส่วนตัว</h2><p>${notes || "(ไม่มีบันทึก)"}</p>
+    <h2>ประวัติ Session</h2>
+    <table><tr><th>เวลา</th><th>คะแนน</th><th>คอ</th><th>ลำตัว</th></tr>
+    ${sessionHistory.map(e=>`<tr>
+      <td>${new Date(e.ts).toLocaleTimeString("th-TH")}</td>
+      <td>${e.score}</td><td>${e.neck.toFixed(0)}°</td><td>${e.trunk.toFixed(0)}°</td>
+    </tr>`).join("")}</table>
+    </body></html>`;
+  const blob = new Blob([html], { type: "text/html" });
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "posture-report.html";
+  a.click(); URL.revokeObjectURL(url);
+};
+
+/* ─── Cleanup ─── */
+document.addEventListener("visibilitychange", () => { if (document.hidden) stopCamera(); });
 window.addEventListener("pagehide", stopCamera);
 </script>
 </body>
